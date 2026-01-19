@@ -391,7 +391,7 @@ export class PayloadCms implements INodeType {
   methods = {
     loadOptions: {
       async getCollections(
-        this: ILoadOptionsFunctions
+        this: ILoadOptionsFunctions,
       ): Promise<INodePropertyOptions[]> {
         try {
           const collections =
@@ -407,13 +407,13 @@ export class PayloadCms implements INodeType {
             this.getNode(),
             `Failed to load collections: ${
               error instanceof Error ? error.message : "Unknown error"
-            }`
+            }`,
           );
         }
       },
 
       async getGlobals(
-        this: ILoadOptionsFunctions
+        this: ILoadOptionsFunctions,
       ): Promise<INodePropertyOptions[]> {
         try {
           const globals = await PayloadCms.prototype.discoverGlobals.call(this);
@@ -427,18 +427,17 @@ export class PayloadCms implements INodeType {
             this.getNode(),
             `Failed to load globals: ${
               error instanceof Error ? error.message : "Unknown error"
-            }`
+            }`,
           );
         }
       },
 
       async getEndpoints(
-        this: ILoadOptionsFunctions
+        this: ILoadOptionsFunctions,
       ): Promise<INodePropertyOptions[]> {
         try {
-          const endpoints = await PayloadCms.prototype.discoverEndpoints.call(
-            this
-          );
+          const endpoints =
+            await PayloadCms.prototype.discoverEndpoints.call(this);
           PayloadCms.endpointsCache.set(this.getInstanceId(), endpoints);
           return endpoints.map((endpoint) => ({
             name: endpoint.path,
@@ -449,56 +448,15 @@ export class PayloadCms implements INodeType {
             this.getNode(),
             `Failed to load endpoints: ${
               error instanceof Error ? error.message : "Unknown error"
-            }`
+            }`,
           );
-        }
-      },
-
-      async getPayloadFields(
-        this: ILoadOptionsFunctions
-      ): Promise<INodePropertyOptions[]> {
-        const resource = this.getCurrentNodeParameter("resource");
-        switch (resource) {
-          case "collection":
-            const collectionSlug = this.getCurrentNodeParameter("collection");
-            const collection = PayloadCms.collectionsCache
-              .get(this.getInstanceId())
-              ?.find((c) => c.slug === collectionSlug);
-            if (!collection) {
-              throw new NodeOperationError(
-                this.getNode(),
-                `Failed to load fields for collection ${collectionSlug}: collection not found`
-              );
-            }
-            return collection.fields.flatMap((f) => payloadField2N8nOption(f));
-
-            break;
-          case "global":
-            const globalSlug = this.getCurrentNodeParameter("collection");
-            const global = PayloadCms.globalsCache
-              .get(this.getInstanceId())
-              ?.find((g) => g.slug === globalSlug);
-            if (!global) {
-              throw new NodeOperationError(
-                this.getNode(),
-                `Failed to load fields for global ${globalSlug}: global not found`
-              );
-            }
-            return global.fields.flatMap((f) => payloadField2N8nOption(f));
-            break;
-
-          default:
-            throw new NodeOperationError(
-              this.getNode(),
-              `Failed to load fields for resource ${resource}: resource not supported`
-            );
         }
       },
     },
   };
 
   async discoverCollections(
-    this: ILoadOptionsFunctions
+    this: ILoadOptionsFunctions,
   ): Promise<SanitizedCollectionConfig[]> {
     const credentials = await this.getCredentials("payloadCmsApi");
     const baseUrl = credentials.baseUrl as string;
@@ -517,13 +475,13 @@ export class PayloadCms implements INodeType {
 
       throw new NodeOperationError(
         this.getNode(),
-        `Failed to load collections ensure that ${baseUrl}${reflectionEndpoint} exists. check https://github.com/warleon/n8n-payload-dynamic?tab=readme-ov-file#payload`
+        `Failed to load collections ensure that ${baseUrl}${reflectionEndpoint} exists. check https://github.com/warleon/n8n-payload-dynamic?tab=readme-ov-file#payload`,
       );
     }
   }
 
   async discoverGlobals(
-    this: ILoadOptionsFunctions
+    this: ILoadOptionsFunctions,
   ): Promise<SanitizedGlobalConfig[]> {
     const credentials = await this.getCredentials("payloadCmsApi");
     const baseUrl = credentials.baseUrl as string;
@@ -541,12 +499,12 @@ export class PayloadCms implements INodeType {
       // If that fails, we'll try some common global names
       throw new NodeOperationError(
         this.getNode(),
-        `Failed to load globals ensure that ${baseUrl}${reflectionEndpoint} exists. check https://github.com/warleon/n8n-payload-dynamic?tab=readme-ov-file#payload`
+        `Failed to load globals ensure that ${baseUrl}${reflectionEndpoint} exists. check https://github.com/warleon/n8n-payload-dynamic?tab=readme-ov-file#payload`,
       );
     }
   }
   async discoverEndpoints(
-    this: ILoadOptionsFunctions
+    this: ILoadOptionsFunctions,
   ): Promise<PayloadDiscoveryResponse["endpoints"]> {
     const credentials = await this.getCredentials("payloadCmsApi");
     const baseUrl = credentials.baseUrl as string;
@@ -562,7 +520,7 @@ export class PayloadCms implements INodeType {
     } catch (error) {
       throw new NodeOperationError(
         this.getNode(),
-        `Failed to load endpoints ensure that ${baseUrl}${reflectionEndpoint} exists. check https://github.com/warleon/n8n-payload-dynamic?tab=readme-ov-file#payload`
+        `Failed to load endpoints ensure that ${baseUrl}${reflectionEndpoint} exists. check https://github.com/warleon/n8n-payload-dynamic?tab=readme-ov-file#payload`,
       );
     }
   }
@@ -570,7 +528,7 @@ export class PayloadCms implements INodeType {
   // Helper method to make authenticated requests
   async makeAuthenticatedRequest(
     this: IExecuteFunctions | ILoadOptionsFunctions,
-    config: AxiosRequestConfig
+    config: AxiosRequestConfig,
   ): Promise<any> {
     const credentials = await this.getCredentials("payloadCmsApi");
     const apiKey = credentials.apiKey as string;
@@ -611,7 +569,7 @@ export class PayloadCms implements INodeType {
         const additionalOptions = this.getNodeParameter(
           "additionalOptions",
           i,
-          {}
+          {},
         ) as any;
 
         const credentials = await this.getCredentials("payloadCmsApi");
@@ -712,7 +670,7 @@ export class PayloadCms implements INodeType {
           const endpoint = this.getNodeParameter("endpoint", i) as string;
           url = `${baseUrl}${apiPrefix}${endpoint}`;
           method = operation.toUpperCase();
-          data = this.getNodeParameter("data", i);
+          if (method !== "GET") data = this.getNodeParameter("data", i);
         }
         let requestConfig: AxiosRequestConfig = {};
         // handle binary inputs
@@ -720,12 +678,12 @@ export class PayloadCms implements INodeType {
         if (binaryPropertyName) {
           const binaryData = this.helpers.assertBinaryData(
             i,
-            binaryPropertyName
+            binaryPropertyName,
           );
 
           const fileBuffer = await this.helpers.getBinaryDataBuffer(
             i,
-            binaryPropertyName
+            binaryPropertyName,
           );
           const fileName = binaryData.fileName;
           const mimeType = binaryData.mimeType;
@@ -743,7 +701,7 @@ export class PayloadCms implements INodeType {
           formData.append("_payload", JSON.stringify(sanitizeData));
 
           requestConfig = {
-            method: method as any,
+            method,
             maxBodyLength: Infinity,
             url,
             params,
@@ -755,7 +713,7 @@ export class PayloadCms implements INodeType {
           };
         } else {
           requestConfig = {
-            method: method as any,
+            method,
             url,
             params,
           };
@@ -771,7 +729,7 @@ export class PayloadCms implements INodeType {
         const response =
           await PayloadCms.prototype.makeAuthenticatedRequest.call(
             this,
-            requestConfig
+            requestConfig,
           );
 
         returnData.push({
