@@ -21,6 +21,18 @@ import { payloadField2N8nOption } from "./utils";
 interface PayloadDiscoveryResponse {
   collections: SanitizedCollectionConfig[];
   globals: SanitizedGlobalConfig[];
+  endpoints: {
+    path: string;
+    method:
+      | "connect"
+      | "delete"
+      | "get"
+      | "head"
+      | "options"
+      | "patch"
+      | "post"
+      | "put";
+  }[];
 }
 
 export class PayloadCms implements INodeType {
@@ -29,6 +41,10 @@ export class PayloadCms implements INodeType {
     SanitizedCollectionConfig[]
   >();
   private static globalsCache = new Map<string, SanitizedGlobalConfig[]>();
+  private static endpointsCache = new Map<
+    string,
+    PayloadDiscoveryResponse["endpoints"]
+  >();
   description: INodeTypeDescription = {
     displayName: "Payload CMS",
     name: "payloadCms",
@@ -64,6 +80,10 @@ export class PayloadCms implements INodeType {
           {
             name: "Global",
             value: "global",
+          },
+          {
+            name: "Endpoint",
+            value: "endpoint",
           },
         ],
       },
@@ -181,6 +201,58 @@ export class PayloadCms implements INodeType {
           },
         ],
       },
+      // Endpoints operations
+      {
+        displayName: "Endpoint",
+        name: "endpoint",
+        type: "options",
+        typeOptions: {
+          loadOptionsMethod: "getEndpoints",
+        },
+        required: true,
+        default: "",
+        displayOptions: {
+          show: {
+            resource: ["endpoint"],
+          },
+        },
+        description: "Choose the endpoint to operate on",
+      },
+      {
+        displayName: "Operation",
+        name: "operation",
+        type: "options",
+        noDataExpression: true,
+        required: true,
+        default: "get",
+        displayOptions: {
+          show: {
+            resource: ["endpoint"],
+          },
+        },
+        options: [
+          {
+            name: "Get",
+            value: "get",
+            description: "Get request",
+          },
+          {
+            name: "Post",
+            value: "post",
+            description: "Post request",
+          },
+          {
+            name: "Put",
+            value: "put",
+            description: "Put request",
+          },
+          {
+            name: "Delete",
+            value: "delete",
+            description: "delete request",
+          },
+        ],
+      },
       // ID field for operations that need it
       {
         displayName: "Document ID",
@@ -221,6 +293,20 @@ export class PayloadCms implements INodeType {
           show: {
             resource: ["global"],
             operation: ["update"],
+          },
+        },
+        description: "The data to send (JSON format)",
+      },
+      {
+        displayName: "Data",
+        name: "data",
+        type: "json",
+        required: true,
+        default: "{}",
+        displayOptions: {
+          show: {
+            resource: ["endpoint"],
+            operation: ["post", "put", "delete"],
           },
         },
         description: "The data to send (JSON format)",
@@ -290,6 +376,13 @@ export class PayloadCms implements INodeType {
             description:
               "Name of the binary property that contains the file to upload",
           },
+          {
+            displayName: "Query Parameters",
+            name: "query",
+            type: "json",
+            default: "{}",
+            description: "Query parameters to add to the request url",
+          },
         ],
       },
     ],
@@ -338,6 +431,29 @@ export class PayloadCms implements INodeType {
           );
         }
       },
+
+      async getEndpoints(
+        this: ILoadOptionsFunctions
+      ): Promise<INodePropertyOptions[]> {
+        try {
+          const endpoints = await PayloadCms.prototype.discoverEndpoints.call(
+            this
+          );
+          PayloadCms.endpointsCache.set(this.getInstanceId(), endpoints);
+          return endpoints.map((endpoint) => ({
+            name: endpoint.path,
+            value: endpoint.path,
+          }));
+        } catch (error) {
+          throw new NodeOperationError(
+            this.getNode(),
+            `Failed to load endpoints: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`
+          );
+        }
+      },
+
       async getPayloadFields(
         this: ILoadOptionsFunctions
       ): Promise<INodePropertyOptions[]> {
@@ -429,6 +545,27 @@ export class PayloadCms implements INodeType {
       );
     }
   }
+  async discoverEndpoints(
+    this: ILoadOptionsFunctions
+  ): Promise<PayloadDiscoveryResponse["endpoints"]> {
+    const credentials = await this.getCredentials("payloadCmsApi");
+    const baseUrl = credentials.baseUrl as string;
+    const reflectionEndpoint = credentials.endpoint as string;
+    try {
+      // Try to get globals from a potential admin endpoint
+      const response: AxiosResponse<PayloadDiscoveryResponse> =
+        await PayloadCms.prototype.makeAuthenticatedRequest.call(this, {
+          method: "GET",
+          url: `${baseUrl}${reflectionEndpoint}`,
+        });
+      return response.data.endpoints;
+    } catch (error) {
+      throw new NodeOperationError(
+        this.getNode(),
+        `Failed to load endpoints ensure that ${baseUrl}${reflectionEndpoint} exists. check https://github.com/warleon/n8n-payload-dynamic?tab=readme-ov-file#payload`
+      );
+    }
+  }
 
   // Helper method to make authenticated requests
   async makeAuthenticatedRequest(
@@ -484,7 +621,7 @@ export class PayloadCms implements INodeType {
         let url = "";
         let method = "GET";
         let data: any = undefined;
-        const params: any = {};
+        const params: any = additionalOptions.query ?? {};
 
         // Add query parameters
         if (additionalOptions.depth !== undefined)
@@ -571,8 +708,12 @@ export class PayloadCms implements INodeType {
               data = this.getNodeParameter("data", i);
               break;
           }
+        } else if (resource === "endpoint") {
+          const endpoint = this.getNodeParameter("endpoint", i) as string;
+          url = `${baseUrl}${apiPrefix}${endpoint}`;
+          method = operation.toUpperCase();
+          data = this.getNodeParameter("data", i);
         }
-
         let requestConfig: AxiosRequestConfig = {};
         // handle binary inputs
         const binaryPropertyName = additionalOptions.upload;
